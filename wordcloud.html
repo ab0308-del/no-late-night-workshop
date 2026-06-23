@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文字雲互動</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.1.0/wordcloud2.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a2e;
+    color: #fff;
+    font-family: 'Noto Sans TC', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  #question {
+    padding: 24px 32px 16px;
+    font-size: clamp(1.4rem, 3vw, 2.2rem);
+    font-weight: 900;
+    color: #00d4ff;
+    text-shadow: 0 0 20px rgba(0,212,255,0.4);
+  }
+  #main {
+    display: flex;
+    flex: 1;
+    gap: 0;
+    padding: 0 16px 0 16px;
+  }
+  #left {
+    width: 300px;
+    min-width: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding-right: 16px;
+  }
+  #input-box {
+    background: #2a2a4a;
+    border-radius: 12px;
+    padding: 20px;
+  }
+  #input-box h3 {
+    color: #00d4ff;
+    font-size: 1rem;
+    margin-bottom: 12px;
+    text-align: center;
+  }
+  #response-input {
+    width: 100%;
+    background: #1a1a2e;
+    border: 2px solid #00d4ff;
+    border-radius: 8px;
+    color: #fff;
+    font-family: 'Noto Sans TC', sans-serif;
+    font-size: 1rem;
+    padding: 10px 12px;
+    resize: none;
+    height: 80px;
+  }
+  #response-input::placeholder { color: #666; }
+  #response-input:focus { outline: none; border-color: #6bcb77; }
+  #submit-btn {
+    width: 100%;
+    margin-top: 10px;
+    background: #00d4ff;
+    color: #1a1a2e;
+    border: none;
+    border-radius: 8px;
+    font-family: 'Noto Sans TC', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  #submit-btn:hover { background: #6bcb77; transform: translateY(-1px); }
+  #submit-msg {
+    text-align: center;
+    font-size: 0.9rem;
+    color: #6bcb77;
+    min-height: 1.2em;
+    margin-top: 6px;
+  }
+  #leaderboard {
+    background: #2a2a4a;
+    border-radius: 12px;
+    padding: 16px;
+    flex: 1;
+    overflow-y: auto;
+    max-height: 380px;
+  }
+  #leaderboard h3 {
+    color: #00d4ff;
+    font-size: 1rem;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .live-badge {
+    background: #ff6b6b;
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+  .lb-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid #3a3a5a;
+    font-size: 0.85rem;
+  }
+  .lb-item:last-child { border-bottom: none; }
+  .lb-count {
+    color: #ffd93d;
+    font-weight: 700;
+    min-width: 28px;
+    text-align: right;
+  }
+  #right {
+    flex: 1;
+    position: relative;
+    min-height: 400px;
+  }
+  #wordcloud-canvas {
+    width: 100%;
+    height: 100%;
+    min-height: 400px;
+  }
+  #footer {
+    padding: 12px 32px;
+    color: #888;
+    font-size: 0.85rem;
+    border-top: 1px solid #2a2a4a;
+  }
+  #footer span { color: #00d4ff; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div id="question">你知道 iPad 本機裡的 AI 有哪些嗎？</div>
+
+<div id="main">
+  <div id="left">
+    <div id="input-box">
+      <h3>輸入你的答案</h3>
+      <textarea id="response-input" placeholder="例：Siri、相機場景辨識..."></textarea>
+      <button id="submit-btn">送出 ↵</button>
+      <div id="submit-msg"></div>
+    </div>
+    <div id="leaderboard">
+      <h3>熱門答案 <span class="live-badge">LIVE</span></h3>
+      <div id="lb-list"></div>
+    </div>
+  </div>
+  <div id="right">
+    <canvas id="wordcloud-canvas"></canvas>
+  </div>
+</div>
+
+<div id="footer">
+  總提交：<span id="total-count">0</span> &nbsp;|&nbsp; 不同答案：<span id="unique-count">0</span>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://demckofqselwofbpdztn.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRlbWNrb2Zxc2Vsd29mYnBkenRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4Mzk3MDYsImV4cCI6MjA5MzQxNTcwNn0.OQFeOvbYVKjHey7soPbuLGtkzCICKg1QPdm8w4l2sS8';
+const TABLE = 'wordcloud_responses';
+const QUESTION = '你知道 iPad 本機裡的 AI 有哪些嗎？';
+
+const COLORS = ['#ff6b6b','#ffd93d','#6bcb77','#4d96ff','#ff922b','#cc5de8','#20c997','#f06595','#74c0fc','#a9e34b'];
+
+async function fetchResponses() {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/${TABLE}?question=eq.${encodeURIComponent(QUESTION)}&select=response`,
+    { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
+  );
+  return await res.json();
+}
+
+function countFrequency(data) {
+  const freq = {};
+  data.forEach(r => {
+    const key = (r.response || '').trim();
+    if (key) freq[key] = (freq[key] || 0) + 1;
+  });
+  return freq;
+}
+
+function renderWordCloud(freq) {
+  const canvas = document.getElementById('wordcloud-canvas');
+  canvas.width = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
+  const entries = Object.entries(freq).sort((a,b) => b[1]-a[1]);
+  const max = entries[0]?.[1] || 1;
+  const wordList = entries.map(([word, count]) => [word, Math.round(20 + (count/max)*80)]);
+  WordCloud(canvas, {
+    list: wordList,
+    gridSize: 8,
+    weightFactor: 1,
+    fontFamily: 'Noto Sans TC, sans-serif',
+    color: () => COLORS[Math.floor(Math.random()*COLORS.length)],
+    rotateRatio: 0.3,
+    rotationSteps: 2,
+    backgroundColor: 'transparent',
+    shuffle: true,
+  });
+}
+
+function renderLeaderboard(freq) {
+  const entries = Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,15);
+  const total = Object.values(freq).reduce((a,b)=>a+b,0);
+  const unique = Object.keys(freq).length;
+  document.getElementById('lb-list').innerHTML = entries.map(([w,c])=>
+    `<div class="lb-item"><span>${w}</span><span class="lb-count">${c}</span></div>`
+  ).join('');
+  document.getElementById('total-count').textContent = total;
+  document.getElementById('unique-count').textContent = unique;
+}
+
+async function refresh() {
+  try {
+    const data = await fetchResponses();
+    const freq = countFrequency(data);
+    if (Object.keys(freq).length > 0) {
+      renderWordCloud(freq);
+      renderLeaderboard(freq);
+    }
+  } catch(e) { console.error(e); }
+}
+
+document.getElementById('submit-btn').addEventListener('click', async () => {
+  const val = document.getElementById('response-input').value.trim();
+  if (!val) return;
+  const msg = document.getElementById('submit-msg');
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({ question: QUESTION, response: val })
+    });
+    document.getElementById('response-input').value = '';
+    msg.textContent = '✅ 已送出！';
+    setTimeout(() => msg.textContent = '', 2000);
+    await refresh();
+  } catch(e) {
+    msg.textContent = '❌ 送出失敗，請重試';
+  }
+});
+
+document.getElementById('response-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    document.getElementById('submit-btn').click();
+  }
+});
+
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>
